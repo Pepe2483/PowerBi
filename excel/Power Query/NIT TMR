@@ -1,0 +1,324 @@
+let
+    Origen = Folder.Files("C:\Users\JOSE\Downloads\NIR TMR BATTILANA"),
+    #"Solo PDF" = Table.SelectRows(Origen, each Text.Lower([Extension]) = ".pdf"),
+
+    FxToText = (x as any) as nullable text =>
+        let
+            t = try Text.Trim(Text.From(x)) otherwise null
+        in
+            if t = "" then null else t,
+
+    FxGetPageById = (pdfTables as table, pageId as text) as table =>
+        let
+            t = try pdfTables{[Id = pageId]}[Data] otherwise #table({}, {})
+        in
+            t,
+
+    FxEnsureColumns = (t as table, cols as list) as table =>
+        List.Accumulate(
+            cols,
+            t,
+            (state, col) =>
+                if List.Contains(Table.ColumnNames(state), col)
+                then state
+                else Table.AddColumn(state, col, each null, type any)
+        ),
+
+    FxPage001 = (pdfTables as table) as table =>
+        let
+            Page1_0 = FxGetPageById(pdfTables, "Page001"),
+            Page1 = FxEnsureColumns(
+                Page1_0,
+                {"Column1","Column2","Column3","Column4","Column5","Column6","Column7","Column8","Column9","Column10","Column11","Column12","Column13","Column14","Column15"}
+            ),
+
+            #"Con índice" = Table.AddIndexColumn(Page1, "Index", 0, 1, Int64.Type),
+
+            #"Texto corregido" =
+                let
+                    t = #"Con índice"
+                in
+                    Table.AddColumn(
+                        t,
+                        "Column2_Nueva",
+                        each
+                            if [Column2] = "Longitud media de las" then
+                                [Column2] & " " & (try t{[Index] + 1}[Column2] otherwise "") & " en mm"
+                            else
+                                [Column2],
+                        type text
+                    ),
+
+            #"Filas filtradas 1" = Table.SelectRows(#"Texto corregido", each [Column2] <> "partículas calculada"),
+
+            #"Column2 reemplazada" = Table.RemoveColumns(#"Filas filtradas 1", {"Column2"}),
+            #"Column2 renombrada" = Table.RenameColumns(#"Column2 reemplazada", {{"Column2_Nueva", "Column2"}}),
+
+            #"Filas corregidas" =
+                Table.FromRecords(
+                    List.Transform(
+                        Table.ToRecords(#"Column2 renombrada"),
+                        each
+                            if [Index] = 19 then
+                                Record.TransformFields(
+                                    _,
+                                    {
+                                        {"Column10", (x) => null},
+                                        {"Column11", (x) => [Column10]},
+                                        {"Column12", (x) => null},
+                                        {"Column13", (x) => [Column12]},
+                                        {"Column14", (x) => null},
+                                        {"Column15", (x) => [Column14]}
+                                    }
+                                )
+                            else if [Index] = 8 then
+                                Record.TransformFields(
+                                    _,
+                                    {
+                                        {"Column2", (x) => Text.Combine(List.RemoveNulls({[Column2], [Column3]}), " ")},
+                                        {"Column8", (x) => [Column7]},
+                                        {"Column1", (x) => null},
+                                        {"Column3", (x) => null},
+                                        {"Column4", (x) => null},
+                                        {"Column5", (x) => null},
+                                        {"Column6", (x) => null},
+                                        {"Column7", (x) => null},
+                                        {"Column9", (x) => null},
+                                        {"Column10", (x) => null},
+                                        {"Column11", (x) => null},
+                                        {"Column12", (x) => null},
+                                        {"Column13", (x) => null},
+                                        {"Column14", (x) => null},
+                                        {"Column15", (x) => null}
+                                    }
+                                )
+                            else
+                                _
+                    )
+                ),
+
+            #"Fila 8 al final" =
+                let
+                    FilaMover = Table.SelectRows(#"Filas corregidas", each [Index] = 8),
+                    Resto = Table.SelectRows(#"Filas corregidas", each [Index] <> 8)
+                in
+                    Table.Combine({Resto, FilaMover}),
+
+            ValorMeta = (Etiqueta as text) as nullable text =>
+                let
+                    T = Table.SelectRows(#"Fila 8 al final", each [Column2] = Etiqueta),
+                    V = if Table.RowCount(T) > 0 then try T{0}[Column4] otherwise null else null
+                in
+                    V,
+
+            ValorIndiceHomogeneidad =
+                let
+                    T = Table.SelectRows(#"Fila 8 al final", each [Index] = 8),
+                    V = if Table.RowCount(T) > 0 then try T{0}[Column8] otherwise null else null
+                in
+                    V,
+
+            #"Fecha agregada" = Table.AddColumn(#"Fila 8 al final", "Personalizado", each ValorMeta("Fecha:"), type text),
+            #"Empresa agregada" = Table.AddColumn(#"Fecha agregada", "Personalizado1", each ValorMeta("Empresa:"), type text),
+            #"Ración agregada" = Table.AddColumn(#"Empresa agregada", "Personalizado2", each ValorMeta("Ración:"), type text),
+            #"TipoRacion agregada" = Table.AddColumn(#"Ración agregada", "Personalizado3", each ValorMeta("ración:"), type text),
+            #"Muestra agregada" = Table.AddColumn(#"TipoRacion agregada", "Personalizado4", each ValorMeta("Muestra:"), type text),
+            #"Instrumento agregado" = Table.AddColumn(#"Muestra agregada", "Personalizado5", each ValorMeta("Instrumento:"), type text),
+            #"Análisis agregado" = Table.AddColumn(#"Instrumento agregado", "Personalizado6", each ValorMeta("Análisis:"), type text),
+
+            #"Índice quitado" = Table.RemoveColumns(#"Análisis agregado", {"Index"}),
+
+            #"Columnas reordenadas" = Table.ReorderColumns(
+                FxEnsureColumns(
+                    #"Índice quitado",
+                    {"Personalizado","Personalizado1","Personalizado2","Personalizado3","Personalizado4","Personalizado5","Personalizado6","Column1","Column2","Column3","Column4","Column5","Column6","Column7","Column8","Column9","Column10","Column11","Column12","Column13","Column14","Column15"}
+                ),
+                {
+                    "Personalizado","Personalizado1","Personalizado2","Personalizado3",
+                    "Personalizado4","Personalizado5","Personalizado6",
+                    "Column2","Column1","Column6","Column8","Column10","Column11","Column12","Column13","Column14","Column15"
+                },
+                MissingField.Ignore
+            ),
+
+            #"Columnas quitadas" = Table.RemoveColumns(
+                #"Columnas reordenadas",
+                {"Column3", "Column4", "Column5", "Column7", "Column9", "Column1", "Column10", "Column12", "Column14"},
+                MissingField.Ignore
+            ),
+
+            #"Filas superiores quitadas" = Table.Skip(#"Columnas quitadas", 10),
+
+            #"Columnas renombradas base" = Table.RenameColumns(
+                FxEnsureColumns(#"Filas superiores quitadas", {"Column2","Column6","Column8","Column11","Column13","Column15"}),
+                {
+                    {"Column2", "Column1"},
+                    {"Column6", "Column2"},
+                    {"Column8", "Column3"},
+                    {"Column11", "Column4"},
+                    {"Column13", "Column5"},
+                    {"Column15", "Column6"}
+                },
+                MissingField.Ignore
+            ),
+
+            #"Fundo1" = Table.ReplaceValue(#"Columnas renombradas base", "Fundo", "Fundo1", Replacer.ReplaceText, {"Column1"}),
+
+            #"Agregar Pagina page001" = Table.AddColumn(#"Fundo1", "Pagina", each "Page001", type text),
+
+            #"Quitar duplicado índice" = Table.SelectRows(
+                #"Agregar Pagina page001",
+                each [Column1] <> "Índice de homogeneidad" and [Column1] <> "Indice de homogeneidad"
+            ),
+
+            #"Fila índice homogeneidad" =
+                #table(
+                    {"Personalizado","Personalizado1","Personalizado2","Personalizado3","Personalizado4","Personalizado5","Personalizado6","Column1","Column2","Column3","Column4","Column5","Column6","Pagina"},
+                    {
+                        {
+                            ValorMeta("Fecha:"),
+                            ValorMeta("Empresa:"),
+                            ValorMeta("Ración:"),
+                            ValorMeta("ración:"),
+                            ValorMeta("Muestra:"),
+                            ValorMeta("Instrumento:"),
+                            ValorMeta("Análisis:"),
+                            "Índice de homogeneidad",
+                            null,
+                            ValorIndiceHomogeneidad,
+                            null,
+                            null,
+                            null,
+                            "Page001"
+                        }
+                    }
+                ),
+
+            #"Page001 final" = Table.Combine({#"Quitar duplicado índice", #"Fila índice homogeneidad"})
+        in
+            #"Page001 final",
+
+    FxPageGenerica = (pdfTables as table, pageId as text) as table =>
+        let
+            Page1_0 = FxGetPageById(pdfTables, pageId),
+            Page1 = FxEnsureColumns(Page1_0, {"Column1","Column2","Column3","Column4","Column5","Column6"}),
+
+            #"Personalizada agregada" = Table.AddColumn(Page1, "Personalizado", each null, type text),
+            #"Columna duplicada" = Table.DuplicateColumn(#"Personalizada agregada", "Personalizado", "Personalizado1"),
+            #"Columna duplicada1" = Table.DuplicateColumn(#"Columna duplicada", "Personalizado1", "Personalizado2"),
+            #"Columna duplicada2" = Table.DuplicateColumn(#"Columna duplicada1", "Personalizado2", "Personalizado3"),
+            #"Columna duplicada3" = Table.DuplicateColumn(#"Columna duplicada2", "Personalizado3", "Personalizado4"),
+            #"Columna duplicada4" = Table.DuplicateColumn(#"Columna duplicada3", "Personalizado4", "Personalizado5"),
+            #"Columna duplicada5" = Table.DuplicateColumn(#"Columna duplicada4", "Personalizado5", "Personalizado5 - Copia"),
+            #"Columnas con nombre cambiado" = Table.RenameColumns(#"Columna duplicada5", {{"Personalizado5 - Copia", "Personalizado6"}}),
+
+            #"Asegurar antes de reordenar" = FxEnsureColumns(
+                #"Columnas con nombre cambiado",
+                {"Personalizado","Personalizado1","Personalizado2","Personalizado3","Personalizado4","Personalizado5","Personalizado6","Column1","Column2","Column3","Column4","Column5","Column6"}
+            ),
+
+            #"Columnas reordenadas" = Table.ReorderColumns(
+                #"Asegurar antes de reordenar",
+                {
+                    "Personalizado","Personalizado1","Personalizado2","Personalizado3",
+                    "Personalizado4","Personalizado5","Personalizado6",
+                    "Column1","Column6","Column2","Column3","Column4","Column5"
+                },
+                MissingField.Ignore
+            ),
+
+            #"Columnas con nombre cambiado1" = Table.RenameColumns(
+                #"Columnas reordenadas",
+                {
+                    {"Column6", "Column2"},
+                    {"Column5", "Column6"},
+                    {"Column4", "Column5"},
+                    {"Column3", "Column4"},
+                    {"Column2", "Column3"}
+                },
+                MissingField.Ignore
+            ),
+
+            #"Agregar Pagina" = Table.AddColumn(#"Columnas con nombre cambiado1", "Pagina", each pageId, type text)
+        in
+            #"Agregar Pagina",
+
+    FxProcesarPDF = (contenido as binary, nombreArchivo as text) as table =>
+        let
+            pdfTables = Pdf.Tables(contenido, [Implementation = "1.3"]),
+
+            Page001 = FxPage001(pdfTables),
+            Page002 = FxPageGenerica(pdfTables, "Page002"),
+            Page003 = FxPageGenerica(pdfTables, "Page003"),
+            Page004 = FxPageGenerica(pdfTables, "Page004"),
+
+            Combinado = Table.Combine({Page001, Page002, Page003, Page004}),
+
+            #"Filas filtradas" = Table.SelectRows(
+                FxEnsureColumns(Combinado, {"Column1","Column2","Column3","Column4","Column5","Column6"}),
+                each
+                    [Column1] <> null and
+                    [Column1] <> "[image]" and
+                    [Column1] <> "Componente" and
+                    [Column3] <> "Promedio"
+            ),
+
+            #"Rellenar hacia abajo" = Table.FillDown(
+                #"Filas filtradas",
+                {"Personalizado", "Personalizado1", "Personalizado2", "Personalizado3", "Personalizado4", "Personalizado5", "Personalizado6"}
+            ),
+
+            #"Agregar Archivo" = Table.AddColumn(#"Rellenar hacia abajo", "Archivo", each nombreArchivo, type text),
+
+            #"Columnas finales" = Table.RenameColumns(
+                #"Agregar Archivo",
+                {
+                    {"Personalizado", "Fecha"},
+                    {"Personalizado1", "Empresa"},
+                    {"Personalizado2", "Racion"},
+                    {"Personalizado3", "TipoRacion"},
+                    {"Personalizado4", "Muestra"},
+                    {"Personalizado5", "Instrumento"},
+                    {"Personalizado6", "Analisis"},
+                    {"Column1", "Componente"},
+                    {"Column2", "Indice para parámetro"},
+                    {"Column3", "Promedio"},
+                    {"Column4", "Muestra1"},
+                    {"Column5", "Muestra2"},
+                    {"Column6", "Muestra3"}
+                },
+                MissingField.Ignore
+            ),
+
+            #"Seleccion final" = Table.SelectColumns(
+                #"Columnas finales",
+                {
+                    "Archivo","Fecha","Empresa","Racion","TipoRacion","Muestra","Instrumento","Analisis",
+                    "Pagina","Componente","Indice para parámetro","Promedio","Muestra1","Muestra2","Muestra3"
+                },
+                MissingField.Ignore
+            )
+        in
+            #"Seleccion final",
+
+    #"Agregar datos PDF" = Table.AddColumn(#"Solo PDF", "Datos", each FxProcesarPDF([Content], [Name])),
+
+    #"Expandir Datos" = Table.ExpandTableColumn(
+        #"Agregar datos PDF",
+        "Datos",
+        {"Archivo","Fecha","Empresa","Racion","TipoRacion","Muestra","Instrumento","Analisis","Pagina","Componente","Indice para parámetro","Promedio","Muestra1","Muestra2","Muestra3"},
+        {"Archivo","Fecha","Empresa","Racion","TipoRacion","Muestra","Instrumento","Analisis","Pagina","Componente","Indice para parámetro","Promedio","Muestra1","Muestra2","Muestra3"}
+    ),
+
+    #"Valor reemplazado" = Table.ReplaceValue(#"Expandir Datos",".",",",Replacer.ReplaceText,{"Promedio", "Muestra1", "Muestra2", "Muestra3"}),
+    #"Valor reemplazado1" = Table.ReplaceValue(#"Valor reemplazado","%","",Replacer.ReplaceText,{"Promedio", "Muestra1", "Muestra2", "Muestra3"}),
+    #"Valor reemplazado2" = Table.ReplaceValue(#"Valor reemplazado1"," mm","",Replacer.ReplaceText,{"Promedio", "Muestra1", "Muestra2", "Muestra3"}),
+    #"Tipo cambiado" = Table.TransformColumnTypes(#"Valor reemplazado2",{{"Promedio", type number}, {"Muestra1", type number}, {"Muestra2", type number}, {"Muestra3", type number}}),
+    #"Columnas quitadas" = Table.RemoveColumns(#"Tipo cambiado",{"Content", "Extension", "Date accessed", "Date modified", "Date created", "Attributes", "Folder Path", "Instrumento", "Analisis", "Archivo"}, MissingField.Ignore),
+    #"Tipo cambiado1" = Table.TransformColumnTypes(#"Columnas quitadas",{{"Fecha", type datetime}}),
+    #"Columnas quitadas1" = Table.RemoveColumns(#"Tipo cambiado1",{"TipoRacion"}, MissingField.Ignore),
+    #"Dividir columna por delimitador" = Table.SplitColumn(Table.TransformColumnTypes(#"Columnas quitadas1", {{"Fecha", type text}}, "es-ES"), "Fecha", Splitter.SplitTextByDelimiter(" ", QuoteStyle.Csv), {"Fecha.1", "Fecha.2"}),
+    #"Tipo cambiado2" = Table.TransformColumnTypes(#"Dividir columna por delimitador",{{"Fecha.1", type date}, {"Fecha.2", type time}}),
+    #"Columnas con nombre cambiado" = Table.RenameColumns(#"Tipo cambiado2",{{"Fecha.2", "Hora"}, {"Fecha.1", "Fecha"}})
+in
+    #"Columnas con nombre cambiado"
