@@ -1,0 +1,6 @@
+let
+    Origen = Table.Combine({PDF_Resultados_1, PDF_Resultados_2}),
+    #"Consultas combinadas" = Table.NestedJoin(Origen, {"Name"}, PDF_Metadatos, {"Name"}, "PDF_Metadatos", JoinKind.LeftOuter),
+    #"Se expandió PDF_Metadatos" = Table.ExpandTableColumn(#"Consultas combinadas", "PDF_Metadatos", {"Fecha y hora:", "Empresa:", "Lote:", "Muestra:", "Producto:", "Adquisición:", "Instrumento:"}, {"Fecha y hora:", "Empresa:", "Lote:", "Muestra:", "Producto:", "Adquisición:", "Instrumento:"})
+in
+    #"Se expandió PDF_Metadatos"
