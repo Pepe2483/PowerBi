@@ -1,36 +1,88 @@
 let
-    Origen = #"NIR BATTILNA",
-    #"Filas filtradas" = Table.SelectRows(
-        Origen,
-        each
-            [Contenido.Name] = "Table001 (Page 1)" or
-            [Contenido.Name] = "Table002 (Page 1)"
+    Origen = Folder.Files("C:\Users\JOSE\Downloads\NIR BATTILNA"),
+
+    ConContenido = Table.AddColumn(Origen, "Contenido", each Pdf.Tables([Content])),
+
+    Expandido = Table.ExpandTableColumn(
+        ConContenido,
+        "Contenido",
+        {"Name", "Kind", "Data"},
+        {"Contenido.Name", "Contenido.Kind", "Contenido.Data"}
     ),
-    #"Se expandió Contenido.Data" = Table.ExpandTableColumn(
-        #"Filas filtradas",
+
+    SoloPage001 = Table.SelectRows(
+        Expandido,
+        each [Contenido.Kind] = "Page" and [Contenido.Name] = "Page001"
+    ),
+
+    DataNormalizada = Table.TransformColumns(
+        SoloPage001,
+        {
+            {
+                "Contenido.Data",
+                each
+                    let
+                        t0 = _,
+                        cols = Table.ColumnNames(t0),
+                        t1 = if List.Contains(cols, "Column3") then t0 else Table.AddColumn(t0, "Column3", each null),
+                        t2 = if List.Contains(Table.ColumnNames(t1), "Column4") then t1 else Table.AddColumn(t1, "Column4", each null),
+                        t3 = Table.SelectColumns(t2, {"Column3", "Column4"})
+                    in
+                        t3
+            }
+        }
+    ),
+
+    Expandido2 = Table.ExpandTableColumn(
+        DataNormalizada,
         "Contenido.Data",
-        {"Column1", "Column2", "Column3"},
-        {"Column1", "Column2", "Column3"}
+        {"Column3", "Column4"},
+        {"Campo", "Valor"}
     ),
-    #"Columnas conservadas" = Table.SelectColumns(
-        #"Se expandió Contenido.Data",
-        {"Name", "Column1", "Column2", "Column3"}
+
+    FilasMetadatos = Table.SelectRows(
+        Expandido2,
+        each List.Contains(
+            {
+                "Fecha y hora:",
+                "Empresa:",
+                "Lote:",
+                "Muestra:",
+                "Producto:",
+                "Adquisición:",
+                "Instrumento:",
+                "Notas:"
+            },
+            [Campo]
+        )
     ),
-    #"Metadato1" = Table.SelectRows(#"Columnas conservadas", each [Column1] <> null and [Column2] <> null),
-    #"Metadato1 renombrado" = Table.RenameColumns(#"Metadato1", {{"Column1", "Campo"}, {"Column2", "Valor"}}),
-    #"Metadato1 columnas" = Table.SelectColumns(#"Metadato1 renombrado", {"Name", "Campo", "Valor"}),
-    #"Metadato2" = Table.SelectRows(#"Columnas conservadas", each [Column3] <> null and [Column2] <> null),
-    #"Metadato2 agregado" = Table.AddColumn(#"Metadato2", "Campo", each [Column3]),
-    #"Metadato2 agregado2" = Table.AddColumn(#"Metadato2 agregado", "Valor", each [Column2]),
-    #"Metadato2 columnas" = Table.SelectColumns(#"Metadato2 agregado2", {"Name", "Campo", "Valor"}),
-    #"Metadatos unidos" = Table.Combine({#"Metadato1 columnas", #"Metadato2 columnas"}),
-    #"Filas válidas" = Table.SelectRows(#"Metadatos unidos", each [Campo] <> null and [Valor] <> null and [Campo] <> ""),
-    #"Columna dinamizada" = Table.Pivot(
-        #"Filas válidas",
-        List.Distinct(#"Filas válidas"[Campo]),
+
+    Conservadas = Table.SelectColumns(
+        FilasMetadatos,
+        {"Name", "Campo", "Valor"}
+    ),
+
+    FilasValidas = Table.SelectRows(
+        Conservadas,
+        each [Valor] <> null and Text.Trim(Text.From([Valor])) <> ""
+    ),
+
+    Agrupado = Table.Group(
+        FilasValidas,
+        {"Name", "Campo"},
+        {{"Valor", each List.First(List.RemoveNulls([Valor])), type text}}
+    ),
+
+    Dinamizada = Table.Pivot(
+        Agrupado,
+        List.Distinct(Agrupado[Campo]),
         "Campo",
         "Valor"
     ),
-    #"Tipo cambiado" = Table.TransformColumnTypes(#"Columna dinamizada", {{"Fecha y hora:", type datetime}})
+
+    TipoCambiado = Table.TransformColumnTypes(
+        Dinamizada,
+        {{"Fecha y hora:", type datetime}}
+    )
 in
-    #"Tipo cambiado"
+    TipoCambiado
