@@ -1,0 +1,24 @@
+let
+    Origen = Folder.Files("C:\Users\JOSE\Downloads\NIR BATTILNA"),
+    #"Personalizada agregada" = Table.AddColumn(Origen, "Contenido", each Pdf.Tables([Content])),
+    #"Se expandió Contenido" = Table.ExpandTableColumn(
+        #"Personalizada agregada",
+        "Contenido",
+        {"Name", "Kind", "Data"},
+        {"Contenido.Name", "Contenido.Kind", "Contenido.Data"}
+    ),
+    #"Filas filtradas" = Table.SelectRows(
+        #"Se expandió Contenido",
+        each [Contenido.Kind] = "Table" and
+            (
+                [Contenido.Name] = "Table001 (Page 1)" or
+                [Contenido.Name] = "Table002 (Page 1)" or
+                [Contenido.Name] = "Table003 (Page 1)" or
+                [Contenido.Name] = "Table004 (Page 2)" or
+                [Contenido.Name] = "Table005 (Page 2)" or
+                [Contenido.Name] = "Table006 (Page 2)" or
+                [Contenido.Name] = "Table007 (Page 2)"
+            )
+    )
+in
+    #"Filas filtradas"
