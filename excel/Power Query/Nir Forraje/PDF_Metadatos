@@ -1,0 +1,36 @@
+let
+    Origen = #"NIR BATTILNA",
+    #"Filas filtradas" = Table.SelectRows(
+        Origen,
+        each
+            [Contenido.Name] = "Table001 (Page 1)" or
+            [Contenido.Name] = "Table002 (Page 1)"
+    ),
+    #"Se expandió Contenido.Data" = Table.ExpandTableColumn(
+        #"Filas filtradas",
+        "Contenido.Data",
+        {"Column1", "Column2", "Column3"},
+        {"Column1", "Column2", "Column3"}
+    ),
+    #"Columnas conservadas" = Table.SelectColumns(
+        #"Se expandió Contenido.Data",
+        {"Name", "Column1", "Column2", "Column3"}
+    ),
+    #"Metadato1" = Table.SelectRows(#"Columnas conservadas", each [Column1] <> null and [Column2] <> null),
+    #"Metadato1 renombrado" = Table.RenameColumns(#"Metadato1", {{"Column1", "Campo"}, {"Column2", "Valor"}}),
+    #"Metadato1 columnas" = Table.SelectColumns(#"Metadato1 renombrado", {"Name", "Campo", "Valor"}),
+    #"Metadato2" = Table.SelectRows(#"Columnas conservadas", each [Column3] <> null and [Column2] <> null),
+    #"Metadato2 agregado" = Table.AddColumn(#"Metadato2", "Campo", each [Column3]),
+    #"Metadato2 agregado2" = Table.AddColumn(#"Metadato2 agregado", "Valor", each [Column2]),
+    #"Metadato2 columnas" = Table.SelectColumns(#"Metadato2 agregado2", {"Name", "Campo", "Valor"}),
+    #"Metadatos unidos" = Table.Combine({#"Metadato1 columnas", #"Metadato2 columnas"}),
+    #"Filas válidas" = Table.SelectRows(#"Metadatos unidos", each [Campo] <> null and [Valor] <> null and [Campo] <> ""),
+    #"Columna dinamizada" = Table.Pivot(
+        #"Filas válidas",
+        List.Distinct(#"Filas válidas"[Campo]),
+        "Campo",
+        "Valor"
+    ),
+    #"Tipo cambiado" = Table.TransformColumnTypes(#"Columna dinamizada", {{"Fecha y hora:", type datetime}})
+in
+    #"Tipo cambiado"
