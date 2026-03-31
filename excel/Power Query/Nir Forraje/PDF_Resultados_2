@@ -1,0 +1,102 @@
+let
+    Origen = #"NIR BATTILNA",
+
+    // Archivos que tienen Table006 (formatos de 6 y 7 tablas)
+    #"Con Table006" = Table.SelectRows(Origen, each [Contenido.Name] = "Table006 (Page 2)"),
+    #"Archivos con Table006" = List.Distinct(#"Con Table006"[Name]),
+
+    // Table004 solo para archivos de 4 tablas
+    #"Table004 solo 4 tablas" = Table.SelectRows(
+        Origen,
+        each [Contenido.Name] = "Table004 (Page 2)" and not List.Contains(#"Archivos con Table006", [Name])
+    ),
+
+    // Table006 para formatos de 6 y 7 tablas
+    #"Table006 solo 6y7 tablas" = Table.SelectRows(
+        Origen,
+        each [Contenido.Name] = "Table006 (Page 2)"
+    ),
+
+    // Table007 solo existe en formatos de 7 tablas
+    #"Table007 solo 7 tablas" = Table.SelectRows(
+        Origen,
+        each [Contenido.Name] = "Table007 (Page 2)"
+    ),
+
+    // Unir las tablas correctas
+    #"Tablas unidas" = Table.Combine({#"Table004 solo 4 tablas", #"Table006 solo 6y7 tablas", #"Table007 solo 7 tablas"}),
+
+    #"Se expandió Contenido.Data" = Table.ExpandTableColumn(
+        #"Tablas unidas",
+        "Contenido.Data",
+        {"Column1", "Column2", "Column3", "Column4", "Column5"},
+        {"Parametro", "Valor_Humedo", "Unidad_Humedo", "Valor_MS", "Unidad_MS"}
+    ),
+
+    #"Columnas conservadas" = Table.SelectColumns(
+        #"Se expandió Contenido.Data",
+        {"Name", "Contenido.Name", "Parametro", "Valor_Humedo", "Unidad_Humedo", "Valor_MS", "Unidad_MS"}
+    ),
+
+    #"Seccion agregada" = Table.AddColumn(
+        #"Columnas conservadas",
+        "Seccion",
+        each if [Parametro] = null and [Valor_Humedo] <> null then [Valor_Humedo] else null
+    ),
+
+    // Rellenar por archivo y por tabla, para que no se mezclen secciones
+    #"Agrupado por Name y Tabla" = Table.Group(
+        #"Seccion agregada",
+        {"Name", "Contenido.Name"},
+        {{"Datos", each Table.FillDown(_, {"Seccion"}), type table}}
+    ),
+
+    #"Se expandió Datos" = Table.ExpandTableColumn(
+        #"Agrupado por Name y Tabla",
+        "Datos",
+        {"Parametro", "Valor_Humedo", "Unidad_Humedo", "Valor_MS", "Unidad_MS", "Seccion"},
+        {"Parametro", "Valor_Humedo", "Unidad_Humedo", "Valor_MS", "Unidad_MS", "Seccion"}
+    ),
+
+    // Asignar sección por defecto según la tabla
+    #"Seccion corregida" = Table.AddColumn(
+        #"Se expandió Datos",
+        "Seccion_Final",
+        each
+            if [Seccion] <> null then [Seccion]
+            else if [Contenido.Name] = "Table007 (Page 2)" then "Valores energéticos"
+            else "Perfil de fermentación"
+    ),
+
+    #"Columnas quitadas1" = Table.RemoveColumns(#"Seccion corregida", {"Seccion"}),
+    #"Seccion renombrada" = Table.RenameColumns(#"Columnas quitadas1", {{"Seccion_Final", "Seccion"}}),
+
+    #"Filas filtradas" = Table.SelectRows(
+        #"Seccion renombrada",
+        each [Parametro] <> null and [Parametro] <> ""
+    ),
+
+    #"Valor reemplazado" = Table.ReplaceValue(
+        #"Filas filtradas",
+        ".",
+        ",",
+        Replacer.ReplaceText,
+        {"Valor_Humedo", "Valor_MS"}
+    ),
+
+    #"Valor reemplazado1" = Table.ReplaceValue(
+        #"Valor reemplazado",
+        "-",
+        null,
+        Replacer.ReplaceValue,
+        {"Valor_Humedo", "Valor_MS"}
+    ),
+
+    #"Tipo cambiado" = Table.TransformColumnTypes(
+        #"Valor reemplazado1",
+        {{"Valor_MS", type number}, {"Valor_Humedo", type number}}
+    ),
+
+    #"Columnas quitadas" = Table.RemoveColumns(#"Tipo cambiado", {"Contenido.Name"})
+in
+    #"Columnas quitadas"
