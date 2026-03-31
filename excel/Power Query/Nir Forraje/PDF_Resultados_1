@@ -1,0 +1,90 @@
+let
+    Origen = #"NIR BATTILNA",
+
+    // Archivos que tienen Table003 (formatos de 6 y 7 tablas)
+    #"Con Table003" = Table.SelectRows(Origen, each [Contenido.Name] = "Table003 (Page 1)"),
+    #"Archivos con Table003" = List.Distinct(#"Con Table003"[Name]),
+
+    // Tomar Table002 solo de archivos que NO tienen Table003 (formato de 4 tablas)
+    #"Table002 solo 4 tablas" = Table.SelectRows(
+        Origen,
+        each [Contenido.Name] = "Table002 (Page 1)" and not List.Contains(#"Archivos con Table003", [Name])
+    ),
+
+    // Tomar Table003 de archivos que sí la tienen
+    #"Table003 solo 6y7 tablas" = Table.SelectRows(
+        Origen,
+        each [Contenido.Name] = "Table003 (Page 1)"
+    ),
+
+    // Unir ambas fuentes correctas
+    #"Tablas unidas" = Table.Combine({#"Table002 solo 4 tablas", #"Table003 solo 6y7 tablas"}),
+
+    #"Se expandió Contenido.Data" = Table.ExpandTableColumn(
+        #"Tablas unidas",
+        "Contenido.Data",
+        {"Column1", "Column2", "Column3", "Column4", "Column5"},
+        {"Parametro", "Valor_Humedo", "Unidad_Humedo", "Valor_MS", "Unidad_MS"}
+    ),
+
+    #"Columnas conservadas" = Table.SelectColumns(
+        #"Se expandió Contenido.Data",
+        {"Name", "Contenido.Name", "Parametro", "Valor_Humedo", "Unidad_Humedo", "Valor_MS", "Unidad_MS"}
+    ),
+
+    #"Seccion agregada" = Table.AddColumn(
+        #"Columnas conservadas",
+        "Seccion",
+        each if [Parametro] = null and [Valor_Humedo] <> null then [Valor_Humedo] else null
+    ),
+
+    #"Agrupado por Name" = Table.Group(
+        #"Seccion agregada",
+        {"Name"},
+        {{"Datos", each Table.FillDown(_, {"Seccion"}), type table}}
+    ),
+
+    #"Se expandió Datos" = Table.ExpandTableColumn(
+        #"Agrupado por Name",
+        "Datos",
+        {"Contenido.Name", "Parametro", "Valor_Humedo", "Unidad_Humedo", "Valor_MS", "Unidad_MS", "Seccion"},
+        {"Contenido.Name", "Parametro", "Valor_Humedo", "Unidad_Humedo", "Valor_MS", "Unidad_MS", "Seccion"}
+    ),
+
+    #"Seccion corregida" = Table.ReplaceValue(
+        #"Se expandió Datos",
+        null,
+        "Composición general",
+        Replacer.ReplaceValue,
+        {"Seccion"}
+    ),
+
+    #"Filas filtradas 1" = Table.SelectRows(
+        #"Seccion corregida",
+        each [Parametro] <> null and [Parametro] <> ""
+    ),
+
+    #"Valor reemplazado" = Table.ReplaceValue(
+        #"Filas filtradas 1",
+        "-",
+        null,
+        Replacer.ReplaceValue,
+        {"Valor_Humedo", "Valor_MS"}
+    ),
+
+    #"Valor reemplazado1" = Table.ReplaceValue(
+        #"Valor reemplazado",
+        ".",
+        ",",
+        Replacer.ReplaceText,
+        {"Valor_Humedo", "Valor_MS"}
+    ),
+
+    #"Tipo cambiado" = Table.TransformColumnTypes(
+        #"Valor reemplazado1",
+        {{"Valor_Humedo", type number}, {"Valor_MS", type number}}
+    ),
+
+    #"Columnas quitadas" = Table.RemoveColumns(#"Tipo cambiado", {"Contenido.Name"})
+in
+    #"Columnas quitadas"
