@@ -1,30 +1,53 @@
 let
     Origen = #"NIR BATTILNA",
 
-    // Archivos que tienen Table006 (formatos de 6 y 7 tablas)
+    // Detectores de formato
     #"Con Table006" = Table.SelectRows(Origen, each [Contenido.Name] = "Table006 (Page 2)"),
     #"Archivos con Table006" = List.Distinct(#"Con Table006"[Name]),
 
-    // Table004 solo para archivos de 4 tablas
+    #"Con Table005 Page2" = Table.SelectRows(Origen, each [Contenido.Name] = "Table005 (Page 2)"),
+    #"Archivos con Table005 Page2" = List.Distinct(#"Con Table005 Page2"[Name]),
+
+    // 4 tablas: solo Table004 y no tiene Table005 ni Table006
     #"Table004 solo 4 tablas" = Table.SelectRows(
         Origen,
-        each [Contenido.Name] = "Table004 (Page 2)" and not List.Contains(#"Archivos con Table006", [Name])
+        each [Contenido.Name] = "Table004 (Page 2)"
+            and not List.Contains(#"Archivos con Table005 Page2", [Name])
+            and not List.Contains(#"Archivos con Table006", [Name])
     ),
 
-    // Table006 para formatos de 6 y 7 tablas
+    // 5 tablas: Table004 + Table005
+    #"Table004 solo 5 tablas" = Table.SelectRows(
+        Origen,
+        each [Contenido.Name] = "Table004 (Page 2)"
+            and List.Contains(#"Archivos con Table005 Page2", [Name])
+            and not List.Contains(#"Archivos con Table006", [Name])
+    ),
+
+    #"Table005 solo 5 tablas" = Table.SelectRows(
+        Origen,
+        each [Contenido.Name] = "Table005 (Page 2)"
+            and not List.Contains(#"Archivos con Table006", [Name])
+    ),
+
+    // 6 y 7 tablas
     #"Table006 solo 6y7 tablas" = Table.SelectRows(
         Origen,
         each [Contenido.Name] = "Table006 (Page 2)"
     ),
 
-    // Table007 solo existe en formatos de 7 tablas
     #"Table007 solo 7 tablas" = Table.SelectRows(
         Origen,
         each [Contenido.Name] = "Table007 (Page 2)"
     ),
 
-    // Unir las tablas correctas
-    #"Tablas unidas" = Table.Combine({#"Table004 solo 4 tablas", #"Table006 solo 6y7 tablas", #"Table007 solo 7 tablas"}),
+    #"Tablas unidas" = Table.Combine({
+        #"Table004 solo 4 tablas",
+        #"Table004 solo 5 tablas",
+        #"Table005 solo 5 tablas",
+        #"Table006 solo 6y7 tablas",
+        #"Table007 solo 7 tablas"
+    }),
 
     #"Se expandió Contenido.Data" = Table.ExpandTableColumn(
         #"Tablas unidas",
@@ -44,7 +67,6 @@ let
         each if [Parametro] = null and [Valor_Humedo] <> null then [Valor_Humedo] else null
     ),
 
-    // Rellenar por archivo y por tabla, para que no se mezclen secciones
     #"Agrupado por Name y Tabla" = Table.Group(
         #"Seccion agregada",
         {"Name", "Contenido.Name"},
@@ -58,13 +80,12 @@ let
         {"Parametro", "Valor_Humedo", "Unidad_Humedo", "Valor_MS", "Unidad_MS", "Seccion"}
     ),
 
-    // Asignar sección por defecto según la tabla
     #"Seccion corregida" = Table.AddColumn(
         #"Se expandió Datos",
         "Seccion_Final",
         each
             if [Seccion] <> null then [Seccion]
-            else if [Contenido.Name] = "Table007 (Page 2)" then "Valores energéticos"
+            else if [Contenido.Name] = "Table005 (Page 2)" or [Contenido.Name] = "Table007 (Page 2)" then "Valores energéticos"
             else "Perfil de fermentación"
     ),
 
